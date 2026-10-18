@@ -31,6 +31,12 @@ namespace kotte
         std::size_t enemy_turns = 0;
     };
 
+    enum class RoundState {
+        playing,
+        won,
+        lost
+    };
+
     class Application final{
     public:
         Application(
@@ -50,6 +56,7 @@ namespace kotte
         struct FrameActions final {
             Vector2 player_movement_direction{};
             bool place_bomb = false;
+            bool restart_round = false;
         };
 
         struct PlaceBombRequest final {
@@ -87,6 +94,9 @@ namespace kotte
         void queue_bomb_placement();
         void apply_entity_destructions();
         void apply_bomb_placements();
+
+        void restart_round();
+
         [[nodiscard]] bool resolve_blast_tile(
             BlastEffect& effect,
             int column,
@@ -145,6 +155,7 @@ namespace kotte
         Random random_;
         TileMap map_;
         EntityStore entities_;
+        std::vector<EntityHandle> all_entity_handles_;
         std::vector<EntityHandle> enemy_handles_;
         std::vector<EntityHandle> active_bomb_handles_;
         SpatialGrid spatial_grid_;
@@ -158,5 +169,6 @@ namespace kotte
         std::uint64_t seed_;
         EntityHandle player_handle_;
         bool exit_requested_ = false;
+        RoundState round_state_ = RoundState::playing;
     };
 }

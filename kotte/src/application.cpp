@@ -70,6 +70,7 @@ namespace kotte
         if(IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_Q)){
             request_exit();
         }
+        frame_actions_.restart_round = IsKeyPressed(KEY_R);
         frame_actions_.place_bomb = IsKeyPressed(KEY_SPACE);
 
         Vector2& movement_direction = frame_actions_.player_movement_direction;
@@ -93,6 +94,9 @@ namespace kotte
     }
 
     void Application::update_gameplay(float delta_time){
+        if (round_state_ != RoundState::playing) {
+            return;
+        }
         // The player and every enemy are movers; each asks its own collision question.
         update_player(delta_time);
         update_enemies(delta_time);
@@ -100,6 +104,9 @@ namespace kotte
     }
 
     void Application::update_timed_gameplay(float delta_time){
+        if (round_state_ != RoundState::playing) {
+            return;
+        }
         // This list is independent of camera queries, so off-screen fuses advance.
         for(const EntityHandle bomb_handle : active_bomb_handles_){
             Entity* bomb = entities_.try_get(bomb_handle);
@@ -155,9 +162,49 @@ namespace kotte
     }
 
     void Application::apply_structural_mutations(){
+        if (frame_actions_.restart_round) {
+            restart_round();
+            return;
+        }
         // Entity storage and every derived index change only at this boundary.
         apply_entity_destructions();
         apply_bomb_placements();
+    }
+
+    void Application::restart_round() {
+        // Stop the old round before rebuilding its entities.
+        round_state_ = RoundState::playing;
+
+        // Remove every live entity from the spatial index and entity store.
+        for (const EntityHandle handle : all_entity_handles_) {
+            Entity* existing = entities_.try_get(handle);
+            if (existing == nullptr) {
+                continue;
+            }
+
+            spatial_grid_.remove(handle, entity_world_bounds(*existing));
+
+            const bool destroyed = entities_.destroy(handle);
+            assert(destroyed);
+            (void)destroyed;
+        }
+
+        // These are non-owning views into the old round.
+        all_entity_handles_.clear();
+        enemy_handles_.clear();
+        active_bomb_handles_.clear();
+
+        // No event/request from the old round may survive the restart.
+        place_bomb_requests_.clear();
+        bomb_detonated_facts_.clear();
+        destroy_entity_requests_.clear();
+        blast_effects_.clear();
+
+        // Rebuild the round using the same seed.
+        random_ = Random{ seed_ };
+
+        populate_entities();
+        initialize_enemies();
     }
 
     void Application::update_presentation(float delta_time){
@@ -247,6 +294,11 @@ namespace kotte
 
             // Synchronize this accepted move before the next enemy query.
             spatial_grid_.update(enemy_handle, old_world_bounds, new_world_bounds);
+
+            if (round_state_ == RoundState::playing && CheckCollisionRecs(new_world_bounds, entity_collision_bounds(player())))
+            {
+                round_state_ = RoundState::lost;
+            }
         }
     }
 
@@ -281,6 +333,8 @@ namespace kotte
                 }
             };
             const EntityHandle bomb_handle = entities_.create(bomb);
+
+            all_entity_handles_.push_back(bomb_handle);
 
             // The store owns the bomb; these handles are synchronized, non-owning
             // views used by spatial queries and timed gameplay.
@@ -361,6 +415,9 @@ namespace kotte
                 blocked_by_crate = true;
                 break;
             case EntityKind::player:
+                if (round_state_ == RoundState::playing) {
+                    round_state_ = RoundState::lost;
+                }
                 // Player-hit consequences are outside the Week 6 lifetime seam.
                 break;
             }
@@ -545,7 +602,23 @@ namespace kotte
             "world: {} x {} tiles | {} total", map_.width(), map_.height(), map_.tile_count());
         DrawText(diagnostics.c_str(), 10, window_.height() - 54, 20, RAYWHITE);
 
-        DrawText("move: WASD/arrows | bomb: Space | quit: Q/Escape", 10, window_.height() - 30, 20, LIGHTGRAY);
+        DrawText("move: WASD/arrows | bomb: Space | restart: R | quit: Q/Escape", 10, window_.height() - 30, 20, LIGHTGRAY);
+
+        const char* round_state_text = "PLAYING";
+
+        switch (round_state_)
+        {
+        case kotte::RoundState::playing:
+            round_state_text = "PLAYING";
+            break;
+        case kotte::RoundState::won:
+            round_state_text = "WON";
+            break;
+        case kotte::RoundState::lost:
+            round_state_text = "LOST";
+            break;
+        }
+        DrawText(round_state_text, 10, window_.height() - 102, 24, RAYWHITE);
     }
 
     void Application::populate_entities(){
@@ -555,6 +628,7 @@ namespace kotte
 
         const Entity player_entity{EntityKind::player, {tile_size_ * 2.5f, tile_size_ * 2.5f}};
         player_handle_ = entities_.create(player_entity);
+        all_entity_handles_.push_back(player_handle_);
         spatial_grid_.insert(player_handle_, entity_world_bounds(player_entity));
 
         for(int y = 1; y < map_.height() - 1; ++y){
@@ -576,6 +650,7 @@ namespace kotte
                 };
                 const Entity new_entity{kind, world_position};
                 const EntityHandle handle = entities_.create(new_entity);
+                all_entity_handles_.push_back(handle);
                 spatial_grid_.insert(handle, entity_world_bounds(new_entity));
 
                 if(kind == EntityKind::enemy){
