@@ -162,12 +162,18 @@ namespace kotte
     }
 
     void Application::apply_structural_mutations(){
+        // Entity storage and every derived index change only at this boundary.
         if (frame_actions_.restart_round) {
             restart_round();
             return;
         }
-        // Entity storage and every derived index change only at this boundary.
+
         apply_entity_destructions();
+
+        if (round_state_ == RoundState::playing && enemy_handles_.empty()) {
+            round_state_ = RoundState::won;
+        }
+        
         apply_bomb_placements();
     }
 
