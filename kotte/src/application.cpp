@@ -99,6 +99,7 @@ namespace kotte
         }
         // The player and every enemy are movers; each asks its own collision question.
         update_player(delta_time);
+        update_bomb_owner_escape();
         update_enemies(delta_time);
         queue_bomb_placement();
     }
@@ -269,6 +270,37 @@ namespace kotte
 
         // Accept the clear proposal; grid synchronization happens after both axes.
         player_entity.world_position = proposed_position;
+    }
+
+    // (Arif) The bomb owner may be trapped by a blast if they cannot escape the blast
+    void Application::update_bomb_owner_escape() {
+        for (const EntityHandle bomb_handle : active_bomb_handles_) {
+            Entity* bomb = entities_.try_get(bomb_handle);
+
+            if (bomb == nullptr || !bomb->bomb_state.has_value()) {
+                continue;
+            }
+
+            BombState& bomb_state = *bomb->bomb_state;
+
+            if (!bomb_state.owner_can_escape) {
+                continue;
+            }
+
+            const Entity* owner = entities_.try_get(bomb_state.owner);
+
+            if (owner == nullptr) {
+                bomb_state.owner_can_escape = false;
+                continue;
+            }
+
+            const Rectangle owner_bounds = entity_collision_bounds(*owner);
+            const Rectangle bomb_bounds = entity_collision_bounds(*bomb);
+
+            if (!CheckCollisionRecs(owner_bounds, bomb_bounds)) {
+                bomb_state.owner_can_escape = false;
+            }
+        }
     }
 
     void Application::update_enemies(float delta_time){
@@ -769,6 +801,26 @@ namespace kotte
             if(candidate == nullptr || !is_solid(candidate->kind)){
                 continue;
             }
+            //  Special case: the moving entity may be the owner of a bomb that it can escape.(Arif)
+            if (candidate->kind == EntityKind::bomb
+                && candidate->bomb_state.has_value()) {
+
+                const BombState& bomb_state = *candidate->bomb_state;
+
+                if (bomb_state.owner == moving_entity_handle
+                    && bomb_state.owner_can_escape) {
+
+                    const Rectangle current_collision_bounds =
+                        entity_collision_bounds(entity(moving_entity_handle));
+
+                    const Rectangle bomb_collision_bounds =
+                        entity_collision_bounds(*candidate);
+
+                    if (CheckCollisionRecs(current_collision_bounds, bomb_collision_bounds)) {
+                        continue;
+                    }
+                }
+            }
 
             // Narrow phase: exact-test the remaining solid candidate.
             ++collision_diagnostics_.exact_tests;
@@ -788,7 +840,7 @@ namespace kotte
         case EntityKind::enemy:
             return true;
         case EntityKind::bomb:
-            return false;
+            return true;
         }
 
         return false;
