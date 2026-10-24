@@ -24,7 +24,10 @@ namespace kotte
             static_cast<float>(map_.width() * tile_size_),
             static_cast<float>(map_.height() * tile_size_)}, spatial_cell_size_}
         , seed_{seed}{
+        initial_entity_random_state_ = random_;
+
         populate_entities();
+        spawn_initial_pickup();
         initialize_enemies();
     }
 
@@ -100,6 +103,7 @@ namespace kotte
         // The player and every enemy are movers; each asks its own collision question.
         update_player(delta_time);
         update_bomb_owner_escape();
+        collect_pickups();
         update_enemies(delta_time);
         queue_bomb_placement();
     }
@@ -200,6 +204,7 @@ namespace kotte
         all_entity_handles_.clear();
         enemy_handles_.clear();
         active_bomb_handles_.clear();
+        pickup_handles_.clear();
 
         // No event/request from the old round may survive the restart.
         place_bomb_requests_.clear();
@@ -208,9 +213,13 @@ namespace kotte
         blast_effects_.clear();
 
         // Rebuild the round using the same seed.
-        random_ = Random{ seed_ };
+        //random_ = Random{ seed_ };
+        random_ = initial_entity_random_state_;
+
+        player_blast_range_ = bomb_blast_range_;
 
         populate_entities();
+        spawn_initial_pickup();
         initialize_enemies();
     }
 
@@ -303,6 +312,33 @@ namespace kotte
         }
     }
 
+    // (Arif) The player can collect pickups to increase their blast range
+    void Application::collect_pickups() {
+        const Rectangle player_bounds =
+            entity_collision_bounds(player());
+
+        for (const EntityHandle pickup_handle : pickup_handles_) {
+            const Entity* pickup = entities_.try_get(pickup_handle);
+
+            if (pickup == nullptr) {
+                continue;
+            }
+
+            const Rectangle pickup_bounds =
+                entity_collision_bounds(*pickup);
+
+            if (!CheckCollisionRecs(player_bounds, pickup_bounds)) {
+                continue;
+            }
+
+            if (player_blast_range_ < maximum_blast_range_) {
+                ++player_blast_range_;
+            }
+
+            destroy_entity_requests_.push_back({ pickup_handle });
+        }
+    }
+
     void Application::update_enemies(float delta_time){
         // The update list contains every enemy, not only those returned by the
         // camera query. Off-screen enemies therefore keep simulating normally.
@@ -367,7 +403,7 @@ namespace kotte
                 .bomb_state = BombState{
                     .owner = request.owner,
                     .fuse_remaining = bomb_fuse_seconds_,
-                    .blast_range = bomb_blast_range_
+                    .blast_range = player_blast_range_
                 }
             };
             const EntityHandle bomb_handle = entities_.create(bomb);
@@ -415,6 +451,9 @@ namespace kotte
         std::erase_if(active_bomb_handles_, [this](EntityHandle handle){
             return !entities_.contains(handle);
         });
+        std::erase_if(pickup_handles_, [this](EntityHandle handle) {
+            return !entities_.contains(handle);
+            });
 
         destroy_entity_requests_.clear();
     }
@@ -458,7 +497,11 @@ namespace kotte
                 }
                 // Player-hit consequences are outside the Week 6 lifetime seam.
                 break;
+            case EntityKind::pickup:
+                destroy_entity_requests_.push_back({ handle });
+                break;
             }
+
         }
 
         return blocked_by_crate;
@@ -600,6 +643,17 @@ namespace kotte
             : 100.0 * (1.0 - static_cast<double>(collision_diagnostics_.unique_candidates) / naive_collision_work);
 
         DrawFPS(GetScreenWidth() - 100, 2);
+        // (Arif) 
+        const std::string range_text =
+            std::format("Blast range: {}", player_blast_range_);
+
+        DrawText(
+            range_text.c_str(),
+            window_.width() - 220,
+            34,
+            20,
+            GOLD
+        );
 
         const double percent_of_world = map_.tile_count() == 0 ? 0.0 : 100.0 * static_cast<double>(tiles_rendered) / static_cast<double>(map_.tile_count());
         diagnostics = std::format(
@@ -698,6 +752,25 @@ namespace kotte
         }
     }
 
+    void Application::spawn_initial_pickup() {
+        const Vector2 pickup_position{
+            tile_size_ * 2.5f,
+            tile_size_ * 2.5f + 50.0f
+        };
+
+        const Entity pickup{
+            EntityKind::pickup,
+            pickup_position
+        };
+
+        const EntityHandle handle = entities_.create(pickup);
+
+        all_entity_handles_.push_back(handle);
+        pickup_handles_.push_back(handle);
+
+        spatial_grid_.insert(handle, entity_world_bounds(pickup));
+    }
+
     void Application::initialize_enemies(){
         // Finish every world-generation roll before drawing runtime headings.
         // This preserves the complete Week 4 layout for the reference seed.
@@ -735,6 +808,7 @@ namespace kotte
         case EntityKind::bomb: size = {22.0f, 22.0f}; break;
         case EntityKind::crate: size = {36.0f, 48.0f}; break;
         case EntityKind::enemy: size = {28.0f, 30.0f}; break;
+        case EntityKind::pickup: size = {18.0f, 18.0f}; break;
         }
 
         const Vector2 top_left = entity.world_position - Vector2{size.x / 2.0f, size.y};
@@ -751,6 +825,7 @@ namespace kotte
         case EntityKind::bomb: size = {18.0f, 12.0f}; break;
         case EntityKind::crate: size = {32.0f, 32.0f}; break;
         case EntityKind::enemy: size = {24.0f, 14.0f}; break;
+        case EntityKind::pickup: size = {16.0f, 12.0f}; break;
         }
 
         const Vector2 top_left = entity.world_position - Vector2{size.x / 2.0f, size.y};
@@ -841,6 +916,8 @@ namespace kotte
             return true;
         case EntityKind::bomb:
             return true;
+        case EntityKind::pickup:
+            return false;
         }
 
         return false;
@@ -900,6 +977,7 @@ namespace kotte
         case EntityKind::bomb: return bomb_color_;
         case EntityKind::crate: return crate_color_;
         case EntityKind::enemy: return enemy_color_;
+        case EntityKind::pickup: return GOLD;
         }
         return MAGENTA;
     }

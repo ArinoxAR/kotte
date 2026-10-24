@@ -95,6 +95,8 @@ namespace kotte
         void queue_bomb_placement();
         void apply_entity_destructions();
         void apply_bomb_placements();
+        void spawn_initial_pickup();
+        void collect_pickups();
         void restart_round();
 
         [[nodiscard]] bool resolve_blast_tile(
@@ -136,6 +138,8 @@ namespace kotte
         static constexpr float enemy_speed_ = 80.0f;
         static constexpr float bomb_fuse_seconds_ = 2.0f;
         static constexpr std::uint8_t bomb_blast_range_ = 3;
+        std::uint8_t player_blast_range_ = 3;
+        static constexpr std::uint8_t maximum_blast_range_ = 8;
         static constexpr float blast_effect_seconds_ = 0.35f;
         static constexpr Color background_color_{0x11, 0x22, 0x33, 0xff};
         static constexpr Color floor_colors_[3]{
@@ -150,9 +154,12 @@ namespace kotte
         static constexpr Color enemy_color_{0xd9, 0x4f, 0x70, 0xff};
         static constexpr Color wall_color_{0x78, 0x5f, 0x47, 0xff};
 
+        std::vector<EntityHandle> pickup_handles_;
+
         Window window_; // Constructed first, destroyed last.
         Camera camera_;
         Random random_;
+        Random initial_entity_random_state_;
         TileMap map_;
         EntityStore entities_;
         std::vector<EntityHandle> all_entity_handles_;
