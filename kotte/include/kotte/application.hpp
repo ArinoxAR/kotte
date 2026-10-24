@@ -95,7 +95,6 @@ namespace kotte
         void queue_bomb_placement();
         void apply_entity_destructions();
         void apply_bomb_placements();
-
         void restart_round();
 
         [[nodiscard]] bool resolve_blast_tile(
