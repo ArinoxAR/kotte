@@ -393,7 +393,8 @@ namespace kotte
         for(const PlaceBombRequest& request : place_bomb_requests_){
             const Entity* owner = entities_.try_get(request.owner);
             if(owner == nullptr || owner->kind != EntityKind::player
-                || owner_has_active_bomb(request.owner)){
+                || active_bomb_count(request.owner) >= maximum_active_bombs_
+                || bomb_exists_at(request.world_position)){
                 continue;
             }
 
@@ -651,6 +652,17 @@ namespace kotte
             range_text.c_str(),
             window_.width() - 220,
             34,
+            20,
+            GOLD
+        );
+
+        const::std::string bomb_text =
+            std::format("Active bombs: {}", active_bomb_handles_.size());
+
+        DrawText(
+            bomb_text.c_str(),
+            window_.width() - 220,
+            58,
             20,
             GOLD
         );
@@ -947,13 +959,48 @@ namespace kotte
         return static_cast<CardinalDirection>(new_value);
     }
 
-    bool Application::owner_has_active_bomb(EntityHandle owner) const noexcept{
+    /*bool Application::owner_has_active_bomb(EntityHandle owner) const noexcept{
         return std::ranges::any_of(active_bomb_handles_, [this, owner](EntityHandle bomb_handle){
             const Entity* bomb = entities_.try_get(bomb_handle);
             return bomb != nullptr
                 && bomb->bomb_state.has_value()
                 && bomb->bomb_state->owner == owner;
         });
+    }*/
+
+    std::size_t Application::active_bomb_count(EntityHandle owner) const {
+        std::size_t count = 0;
+
+        for (const EntityHandle bomb_handle : active_bomb_handles_) {
+            const Entity* bomb = entities_.try_get(bomb_handle);
+
+            if (bomb == nullptr || !bomb->bomb_state.has_value()) {
+                continue;
+            }
+
+            if (bomb->bomb_state->owner == owner) {
+                ++count;
+            }
+        }
+
+        return count;
+    }
+
+    bool Application::bomb_exists_at(Vector2 world_position) const {
+        for (const EntityHandle bomb_handle : active_bomb_handles_) {
+            const Entity* bomb = entities_.try_get(bomb_handle);
+
+            if (bomb == nullptr) {
+                continue;
+            }
+
+            if (bomb->world_position.x == world_position.x
+                && bomb->world_position.y == world_position.y) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     Vector2 Application::tile_centre(Vector2 world_position) noexcept{
