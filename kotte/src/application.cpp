@@ -108,6 +108,31 @@ namespace kotte
         queue_bomb_placement();
     }
 
+    void Application::request_bomb_detonation(EntityHandle bomb_handle) {
+        
+        Entity* bomb = entities_.try_get(bomb_handle);
+
+        if(bomb == nullptr || bomb->kind != EntityKind::bomb || !bomb->bomb_state.has_value()){
+            return;
+        }
+
+        BombState& state = *bomb->bomb_state;
+
+        if (state.detonation_requested) {
+            return;
+        }
+
+        state.detonation_requested = true;
+        state.fuse_remaining = 0.0f;
+
+        bomb_detonated_facts_.push_back({
+            bomb_handle,
+            state.owner,
+            bomb->world_position,
+            state.blast_range
+            });
+    }
+
     void Application::update_timed_gameplay(float delta_time){
         if (round_state_ != RoundState::playing) {
             return;
@@ -122,26 +147,23 @@ namespace kotte
 
             BombState& state = *bomb->bomb_state;
             state.fuse_remaining -= delta_time;
-            if(state.fuse_remaining > 0.0f){
-                continue;
+
+            if(state.fuse_remaining <= 0.0f){
+                request_bomb_detonation(bomb_handle);
             }
-
-            state.fuse_remaining = 0.0f;
-            state.detonation_requested = true;
-
-            // The fact owns every value needed by later phases; it does not
-            // borrow the bomb that will eventually request its own destruction.
-            bomb_detonated_facts_.push_back({
-                bomb_handle,
-                state.owner,
-                bomb->world_position,
-                state.blast_range
-            });
         }
     }
 
     void Application::resolve_gameplay_facts(){
-        for(const BombDetonated& fact : bomb_detonated_facts_){
+        std::size_t next_fact = 0;
+
+        while (next_fact < bomb_detonated_facts_.size()) {
+            // Copy the fact because resolving a blast can append more facts
+            // and cause the vector to reallocate.
+            const BombDetonated fact =
+                bomb_detonated_facts_[next_fact];
+
+            ++next_fact;
             BlastEffect effect;
             effect.remaining_seconds = blast_effect_seconds_;
             effect.tile_centres.reserve(static_cast<std::size_t>(fact.blast_range) * 4 + 1);
@@ -455,6 +477,9 @@ namespace kotte
         std::erase_if(pickup_handles_, [this](EntityHandle handle) {
             return !entities_.contains(handle);
             });
+        std::erase_if(all_entity_handles_, [this](EntityHandle handle) {
+            return !entities_.contains(handle);
+            });
 
         destroy_entity_requests_.clear();
     }
@@ -485,6 +510,8 @@ namespace kotte
 
             switch(candidate->kind){
             case EntityKind::bomb:
+                request_bomb_detonation(handle);
+                break;
             case EntityKind::enemy:
                 destroy_entity_requests_.push_back({handle});
                 break;

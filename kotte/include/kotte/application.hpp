@@ -86,6 +86,7 @@ namespace kotte
         void update_gameplay(float delta_time);
         void update_timed_gameplay(float delta_time);
         void resolve_gameplay_facts();
+        void request_bomb_detonation(EntityHandle bomb_handle);
         void apply_structural_mutations();
         void update_presentation(float delta_time);
         void update_player(float delta_time);
