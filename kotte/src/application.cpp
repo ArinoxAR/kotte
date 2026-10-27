@@ -186,6 +186,54 @@ namespace kotte
         }
 
         bomb_detonated_facts_.clear();
+        award_explosion_score();
+    }
+
+    void Application::award_explosion_score() {
+        int combo = 0;
+        int earned_points = 0;
+
+        // An entity may be hit by multiple blast tiles.
+        // Count each entity only once.
+        std::vector<EntityHandle> scored_handles;
+
+        for (const DestroyEntityRequest& request : destroy_entity_requests_) {
+            const Entity* target = entities_.try_get(request.entity);
+
+            if (target == nullptr) {
+                continue;
+            }
+
+            int base_points = 0;
+
+            switch (target->kind) {
+            case EntityKind::crate:
+                base_points = 50;
+                break;
+
+            case EntityKind::enemy:
+                base_points = 100;
+                break;
+
+            default:
+                continue;
+            }
+
+            if (std::ranges::find(scored_handles, request.entity)
+                != scored_handles.end()) {
+                continue;
+            }
+
+            scored_handles.push_back(request.entity);
+
+            ++combo;
+            earned_points += base_points * combo;
+        }
+
+        if (combo > 0) {
+            score_ += earned_points;
+            last_combo_ = combo;
+        }
     }
 
     void Application::apply_structural_mutations(){
@@ -239,6 +287,9 @@ namespace kotte
         random_ = initial_entity_random_state_;
 
         player_blast_range_ = bomb_blast_range_;
+
+        score_ = 0;
+        last_combo_ = 0;
 
         populate_entities();
         spawn_initial_pickup();
@@ -690,6 +741,28 @@ namespace kotte
             bomb_text.c_str(),
             window_.width() - 220,
             58,
+            20,
+            GOLD
+        );
+
+        const std::string score_text =
+            std::format("Score: {}", score_);
+
+        DrawText(
+            score_text.c_str(),
+            window_.width() - 220,
+            82,
+            20,
+            GOLD
+        );
+
+        const std::string combo_text =
+            std::format("Last combo: x{}", last_combo_);
+
+        DrawText(
+            combo_text.c_str(),
+            window_.width() - 220,
+            106,
             20,
             GOLD
         );

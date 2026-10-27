@@ -87,6 +87,7 @@ namespace kotte
         void update_timed_gameplay(float delta_time);
         void resolve_gameplay_facts();
         void request_bomb_detonation(EntityHandle bomb_handle);
+        void award_explosion_score();
         void apply_structural_mutations();
         void update_presentation(float delta_time);
         void update_player(float delta_time);
@@ -143,6 +144,8 @@ namespace kotte
         static constexpr std::uint8_t bomb_blast_range_ = 3;
         static constexpr std::size_t maximum_active_bombs_ = 3;
         std::uint8_t player_blast_range_ = 3;
+        int score_ = 0;
+        int last_combo_ = 0;
         static constexpr std::uint8_t maximum_blast_range_ = 8;
         static constexpr float blast_effect_seconds_ = 0.35f;
         static constexpr Color background_color_{0x11, 0x22, 0x33, 0xff};
