@@ -865,22 +865,36 @@ namespace kotte
     }
 
     void Application::spawn_initial_pickup() {
-        const Vector2 pickup_position{
-            tile_size_ * 2.5f,
-            tile_size_ * 2.5f + 50.0f
+        const Vector2 pickup_position_1{
+            tile_size_ * 30.5f,
+            tile_size_ * 10.5f + 50.0f
         };
 
-        const Entity pickup{
+        const Vector2 pickup_position_2{
+            tile_size_ * 80.5f,
+            tile_size_ * 100.5f + 10.0f
+        };
+
+        const Entity pickup_1{
             EntityKind::pickup,
-            pickup_position
+            pickup_position_1
         };
 
-        const EntityHandle handle = entities_.create(pickup);
+        const Entity pickup_2{
+            EntityKind::pickup,
+            pickup_position_2
+        };
 
-        all_entity_handles_.push_back(handle);
-        pickup_handles_.push_back(handle);
+        const EntityHandle handle_1 = entities_.create(pickup_1);
+        const EntityHandle handle_2 = entities_.create(pickup_2);
 
-        spatial_grid_.insert(handle, entity_world_bounds(pickup));
+        all_entity_handles_.push_back(handle_1);
+        all_entity_handles_.push_back(handle_2);
+        pickup_handles_.push_back(handle_1);
+        pickup_handles_.push_back(handle_2);
+
+        spatial_grid_.insert(handle_1, entity_world_bounds(pickup_1));
+        spatial_grid_.insert(handle_2, entity_world_bounds(pickup_2));
     }
 
     void Application::initialize_enemies(){
